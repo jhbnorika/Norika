@@ -1,0 +1,76 @@
+/**
+ *Https请求
+*/
+public class NorikaHttpsClient extends DefaultHttpClient {
+    private final Context context;
+    private final int connTimeOut;
+    private final int soTimeOut;
+
+    public AnjukeHttpsClient(Context context, int connTimeOut, int soTimeOut) {
+        this.context = context;
+        this.connTimeOut = connTimeOut;
+        this.soTimeOut = soTimeOut;
+    }
+
+    @Override
+    protected ClientConnectionManager createClientConnectionManager() {
+        HttpParams params = new BasicHttpParams();
+
+        // Turn off stale checking. Our connections break all the time
+        // anyway,
+        // and it's not worth it to pay the penalty of checking every time.
+        HttpConnectionParams.setStaleCheckingEnabled(params, false);
+
+        // Default connection and socket timeout of 20 seconds. Tweak to
+        // taste.
+        HttpConnectionParams.setConnectionTimeout(params, connTimeOut * 1000);
+        HttpConnectionParams.setSoTimeout(params, soTimeOut * 1000);
+        HttpConnectionParams.setSocketBufferSize(params, 8192);
+        // 8192 = 2 ^ 13.
+
+        // Don't handle redirects -- return them to the caller. Our code
+        // often wants to re-POST after a redirect, which we must do
+        // ourselves.
+
+        // DOES WE NEED REDIRECTING?
+        HttpClientParams.setRedirecting(params, true);
+
+        // Set the specified user agent and register standard protocols.
+        HttpProtocolParams.setUserAgent(params, "https");
+
+        SchemeRegistry registry = new SchemeRegistry();
+        // Register for port 443 our SSLSocketFactory with our keystore
+        // to the ConnectionManager
+        registry.register(new Scheme("https", newSslSocketFactory(), 443));
+
+        return new ThreadSafeClientConnManager(params, registry);
+    }
+
+    private SSLSocketFactory newSslSocketFactory() {
+        try {
+            // Get an instance of the Bouncy Castle KeyStore format
+            KeyStore trusted = KeyStore.getInstance("BKS");
+            // Get the raw resource, which contains the keystore with
+            // your trusted certificates (root and any intermediate certs)
+            InputStream in = null;
+            try {
+                // Initialize the keystore with the provided trusted certificates
+                // Also provide the password of the keystore
+                in = context.getResources().openRawResource(R.raw.anjukeapikeystore);
+                trusted.load(in, "anjukeapi".toCharArray());
+            } finally {
+                if (in != null)
+                    in.close();
+            }
+            // Pass the keystore to the SSLSocketFactory. The factory is responsible
+            // for the verification of the server certificate.
+            SSLSocketFactory sf = new SSLSocketFactory(trusted);
+            // Hostname verification from certificate
+            // http://hc.apache.org/httpcomponents-client-ga/tutorial/html/connmgmt.html#d4e506
+            sf.setHostnameVerifier(SSLSocketFactory.STRICT_HOSTNAME_VERIFIER);
+            return sf;
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
+}
